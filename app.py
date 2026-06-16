@@ -1,66 +1,98 @@
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
-from benchmark_core import run_benchmark
+from benchmark import buat_dataset, jalankan_benchmark
 
-st.set_page_config(page_title="Benchmark Struktur Data", layout="centered", page_icon="📊")
+st.set_page_config(page_title="Benchmarking Struktur Data", page_icon="⚡")
 
-st.title("⚡ Benchmark Pencarian: Array vs BST vs Hash Table vs AVL")
-st.caption(":material/database: Dataset: Acak, Terurut, Descending | Ukuran: 100, 1000, 10000 data")
+st.title("⚡ Benchmarking Performa Struktur Data")
+st.caption("Membandingkan Array/List, BST, Hash Table, dan AVL Tree.")
 
-if 'benchmark_done' not in st.session_state:
-    st.session_state.benchmark_done = False
-if 'df_results' not in st.session_state:
-    st.session_state.df_results = None
+st.markdown("---")
 
-col1, col2, col3 = st.columns([1, 2, 1])
-with col2:
-    if st.button(":material/play_circle: Jalankan Benchmark", type="primary", width='stretch'):
-        with st.spinner("Menjalankan benchmark..."):
-            sizes = [100, 1000, 10000]
-            orders = ['acak', 'terurut', 'descending']
-            results = []
-            for size in sizes:
-                for order in orders:
-                    results.append(run_benchmark(size, order))
-            st.session_state.df_results = pd.DataFrame(results)
-            st.session_state.benchmark_done = True
-        st.rerun()
+# ── LANGKAH 1 – GENERATE DATASET ────────────────────
 
-if st.session_state.benchmark_done and st.session_state.df_results is not None:
-    df = st.session_state.df_results
+st.header("1. Generate Dataset")
 
-    st.subheader(":material/table_chart: Hasil Benchmark (μs)")
-    st.dataframe(df, width='stretch')
+ukuran = st.selectbox("Ukuran Dataset", [100, 1_000, 10_000],
+                      format_func=lambda x: f"{x:,} data")
+jenis  = st.selectbox("Jenis Dataset", ["acak", "terurut", "descending"],
+                      format_func=str.capitalize)
 
-    st.subheader(":material/show_chart: Grafik Perbandingan")
-    plt.style.use('dark_background')
-    fig, ax = plt.subplots(figsize=(10, 5), facecolor='none')
-    ax.set_facecolor('#1e1e1e')
+if st.button("Generate Dataset"):
+    contoh = buat_dataset(ukuran, jenis)
+    st.success(f"Dataset berhasil dibuat: {ukuran:,} data ({jenis})")
+    st.write("Contoh 10 data pertama:", contoh[:10])
 
-    for col in ['Array/List (μs)', 'Hash Table (μs)', 'BST (μs)', 'AVL (μs)']:
-        labels = [f"{row['Ukuran']}\n({row['Tipe Data']})" for _, row in df.iterrows()]
-        ax.plot(labels, df[col], marker='o', label=col, linewidth=2)
+st.markdown("---")
 
-    ax.set_ylabel("Waktu (μs)", color='white')
-    ax.set_xlabel("Ukuran Data & Tipe Data", color='white')
-    ax.tick_params(colors='white', rotation=45)
-    ax.legend(facecolor='#2d2d2d', edgecolor='white', labelcolor='white')
-    ax.grid(True, linestyle='--', alpha=0.5, color='gray')
-    ax.set_title("Perbandingan Kecepatan Pencarian", color='white', fontsize=14)
+# ── LANGKAH 2 & 3 – PILIH STRUKTUR DATA & OPERASI ───
 
-    plt.xticks(rotation=45, ha='right')
-    plt.tight_layout()
-    st.pyplot(fig)
+st.header("2. Pilih Operasi")
 
-    st.info(
-        "**:material/insight: Kesimpulan**  \n"
-        "Hash Table (dict) konsisten tercepat. AVL stabil O(log n). "
-        "BST memburuk pada data terurut/descending karena menjadi linear.",
-        icon=":material/info:"
+operasi   = st.selectbox("Operasi", ["search", "insert", "delete"],
+                         format_func=str.capitalize)
+ulangan   = st.slider("Jumlah Pengulangan", 1, 20, 5)
+
+st.markdown("---")
+
+# ── LANGKAH 4 – LAKUKAN BENCHMARK ───────────────────
+
+st.header("3. Lakukan Benchmark")
+
+if st.button("▶ Jalankan Benchmark"):
+    with st.spinner("Sedang mengukur performa …"):
+        hasil = jalankan_benchmark(ukuran, jenis, operasi, ulangan)
+
+    st.success("✅ Benchmark selesai!")
+
+    # ── LANGKAH 5 – TAMPILKAN GRAFIK DAN ANALISIS ───
+
+    st.header("4. Hasil & Analisis")
+
+    # Tabel hasil
+    df = pd.DataFrame(
+        list(hasil.items()),
+        columns=["Struktur Data", "Waktu Rata-rata (µs)"]
     )
-else:
-    st.info(
-        "**:material/play_arrow: Klik tombol di atas untuk memulai benchmark.**",
-        icon=":material/start:"
-    )
+    df = df.sort_values("Waktu Rata-rata (µs)").reset_index(drop=True)
+    st.dataframe(df, use_container_width=True)
+
+    # Grafik batang bawaan Streamlit
+    st.bar_chart(df.set_index("Struktur Data"))
+
+    # Analisis sederhana
+    st.subheader("Analisis")
+
+    tercepat  = df.iloc[0]
+    terlambat = df.iloc[-1]
+
+    st.write(f"✅ **Tercepat**: {tercepat['Struktur Data']} "
+             f"({tercepat['Waktu Rata-rata (µs)']:.4f} µs)")
+    st.write(f"🐢 **Terlambat**: {terlambat['Struktur Data']} "
+             f"({terlambat['Waktu Rata-rata (µs)']:.4f} µs)")
+
+    selisih = terlambat['Waktu Rata-rata (µs)'] - tercepat['Waktu Rata-rata (µs)']
+    st.write(f"📊 Selisih waktu: **{selisih:.4f} µs**")
+
+    # Catatan khusus dataset terurut
+    if jenis in ["terurut", "descending"]:
+        st.warning(
+            "⚠️ Dataset terurut/descending adalah kasus terburuk BST. "
+            "Pohon BST bisa menjadi tidak seimbang sehingga performanya menurun. "
+            "AVL Tree tetap stabil karena melakukan rotasi otomatis."
+        )
+
+st.markdown("---")
+
+# ── TABEL KOMPLEKSITAS ───────────────────────────────
+
+st.header("📐 Kompleksitas Algoritma")
+
+df_kompleksitas = pd.DataFrame({
+    "Struktur Data": ["Array/List", "BST",        "Hash Table",  "AVL Tree"],
+    "Search":        ["O(n)",       "O(log n)*",  "O(1)",        "O(log n)"],
+    "Insert":        ["O(1)",       "O(log n)*",  "O(1)",        "O(log n)"],
+    "Delete":        ["O(n)",       "O(log n)*",  "O(1)",        "O(log n)"],
+})
+st.dataframe(df_kompleksitas.set_index("Struktur Data"), use_container_width=True)
+st.caption("* BST tidak self-balancing → bisa O(n) pada data terurut.")
